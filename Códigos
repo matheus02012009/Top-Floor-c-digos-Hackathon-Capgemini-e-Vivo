@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LuzGuia • Vivo</title>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+:root { --roxo: #660099; }
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+    background: linear-gradient(135deg,#fff 0%,#f8f0ff 60%,#f0e0ff 100%);
+    font-family:'Roboto',sans-serif;
+    min-height:100vh;
+    display:flex; flex-direction:column; align-items:center;
+    padding-bottom:60px;
+}
+
+.top-bar {
+    position:fixed; top:0; left:0; right:0; height:80px;
+    background:var(--roxo);
+    display:flex; justify-content:space-between; align-items:center;
+    padding:0 40px; z-index:100;
+    box-shadow:0 2px 12px #00000033;
+}
+.logo { height:42px; filter:brightness(0) invert(1); }
+
+header { margin-top:108px; text-align:center; padding:20px 0 0; }
+header h1 { font-size:2.8rem; color:var(--roxo); letter-spacing:-1px; }
+header p  { color:#777; font-size:1rem; margin-top:4px; }
+
+.steps {
+    display:flex; margin:28px 0 0;
+    max-width:680px; width:100%; padding:0 20px;
+}
+.step-indicator {
+    flex:1; display:flex; flex-direction:column; align-items:center; position:relative;
+}
+.step-indicator:not(:last-child)::after {
+    content:''; position:absolute; top:18px; left:60%;
+    width:80%; height:2px; background:#ddd; z-index:0;
+}
+.step-indicator.done:not(:last-child)::after { background:var(--roxo); }
+.step-circle {
+    width:36px; height:36px; border-radius:50%;
+    border:2px solid #ccc; background:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-weight:700; color:#aaa; font-size:15px; z-index:1; transition:all .3s;
+}
+.step-indicator.active .step-circle,
+.step-indicator.done   .step-circle { border-color:var(--roxo); background:var(--roxo); color:#fff; }
+.step-label {
+    margin-top:6px; font-size:11px; color:#aaa;
+    text-align:center; font-weight:500; text-transform:uppercase; letter-spacing:.5px;
+}
+.step-indicator.active .step-label,
+.step-indicator.done   .step-label { color:var(--roxo); }
+
+.card {
+    background:#fff; border:2.5px solid var(--roxo); border-radius:16px;
+    padding:30px; max-width:660px; width:calc(100% - 40px);
+    margin:24px 0 0; display:none; animation:fadeIn .35s ease;
+}
+.card.visible { display:block; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
+.card h2 {
+    color:var(--roxo); font-size:1.3rem; margin-bottom:20px;
+    display:flex; align-items:center; gap:10px;
+}
+.card h2 .num {
+    background:var(--roxo); color:#fff; width:28px; height:28px;
+    border-radius:50%; display:inline-flex; align-items:center; justify-content:center;
+    font-size:14px; font-weight:700; flex-shrink:0;
+}
+
+.row { display:flex; gap:18px; flex-wrap:wrap; }
+.field { flex:1; min-width:160px; }
+label { display:block; font-size:13px; font-weight:600; color:#555; margin-bottom:6px; }
+select {
+    width:100%; padding:11px 12px; border:2px solid #ddd; border-radius:10px;
+    font-size:15px; color:#333; cursor:pointer; appearance:none;
+    background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23660099' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 14px center,#fff;
+    transition:border-color .2s;
+}
+select:focus { outline:none; border-color:var(--roxo); }
+
+.btn {
+    background:var(--roxo); color:#fff; border:none;
+    padding:13px 28px; border-radius:10px; font-size:15px; font-weight:600;
+    cursor:pointer; margin-top:22px; transition:background .2s,transform .1s;
+    display:inline-flex; align-items:center; gap:8px;
+}
+.btn:hover { background:#7a00b3; }
+.btn:active { transform:scale(.97); }
+.btn-outline { background:transparent; border:2px solid var(--roxo); color:var(--roxo); padding:11px 22px; }
+.btn-outline:hover { background:#f5e6ff; }
+.btn-row { display:flex; gap:12px; flex-wrap:wrap; margin-top:22px; }
+
+.pref-badge {
+    background:#f3e8ff; border:1.5px solid #c084fc; border-radius:10px;
+    padding:12px 16px; display:flex; justify-content:space-between; align-items:center;
+    font-size:14px; color:#6b21a8; font-weight:500;
+}
+.pref-badge button {
+    background:none; border:none; color:var(--roxo);
+    font-size:13px; cursor:pointer; font-weight:600; text-decoration:underline; padding:0; margin:0;
+}
+
+#webcam-wrap { display:flex; justify-content:center; margin-bottom:14px; }
+#webcam-wrap canvas { border:3px solid var(--roxo); border-radius:12px; max-width:100%; }
+#status-cam { font-size:14px; color:#888; text-align:center; min-height:22px; margin-bottom:12px; }
+
+/* DEBUG — sempre visível */
+#debug-wrap {
+    background:#111; border-radius:12px; padding:16px 18px;
+    margin-top:14px;
+}
+#debug-title {
+    font-size:11px; color:#666; text-transform:uppercase;
+    letter-spacing:1px; margin-bottom:12px; font-family:monospace;
+}
+#debug-list { list-style:none; display:flex; flex-direction:column; gap:7px; }
+#debug-list li { display:flex; align-items:center; gap:8px; font-family:monospace; font-size:13px; color:#aaa; }
+#debug-list li .lbl { min-width:200px; }
+#debug-list li .bar-bg { flex:1; height:8px; background:#2a2a2a; border-radius:4px; overflow:hidden; }
+#debug-list li .bar-fill { height:100%; background:#5500aa; border-radius:4px; transition:width .1s; }
+#debug-list li .pct { min-width:52px; text-align:right; }
+#debug-list li.top { color:#fff; }
+#debug-list li.top .bar-fill { background:#00e676; }
+#debug-list li.top .lbl { color:#e879f9; font-weight:700; }
+
+/* RESULTADO */
+#resultado {
+    max-width:660px; width:calc(100% - 40px);
+    margin-top:20px; margin-bottom:10px;
+    display:none; animation:fadeIn .4s ease;
+}
+.resultado-box {
+    background:var(--roxo); color:#fff; border-radius:16px;
+    padding:28px 36px; text-align:center; box-shadow:0 4px 30px #a64dff44;
+}
+.resultado-box .label-top {
+    font-size:12px; text-transform:uppercase; letter-spacing:1.5px; opacity:.75; margin-bottom:8px;
+}
+.resultado-box .produto { font-size:1.7rem; font-weight:700; }
+.resultado-box.sem-produto {
+    background:#f3f4f6; color:#9ca3af; box-shadow:none; border:2px dashed #d1d5db;
+}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+    <img src="https://upload.wikimedia.org/wikipedia/commons/9/9a/Operadora_Vivo_%28logotipo%29.png" class="logo">
+    <img src="https://upload.wikimedia.org/wikipedia/commons/9/9d/Capgemini_201x_logo.svg" class="logo">
+</div>
+
+<header>
+    <h1>LuzGuia</h1>
+    <p>Prateleira Inteligente com IA</p>
+</header>
+
+<div class="steps">
+    <div class="step-indicator active" id="si-1">
+        <div class="step-circle">1</div>
+        <div class="step-label">Preferência</div>
+    </div>
+    <div class="step-indicator" id="si-2">
+        <div class="step-circle">2</div>
+        <div class="step-label">Prateleira</div>
+    </div>
+</div>
+
+<!-- CARD 1 -->
+<div class="card visible" id="card-1">
+    <h2><span class="num">1</span> Preferência do Cliente</h2>
+    <div id="pref-form">
+        <div class="row">
+            <div class="field">
+                <label for="marca">Marca preferida</label>
+                <select id="marca">
+                    <option value="samsung">Samsung</option>
+                    <option value="apple">Apple</option>
+                    <option value="outro">Outro</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="exclusivo">Produto exclusivo?</label>
+                <select id="exclusivo">
+                    <option value="sim">Sim</option>
+                    <option value="nao">Não</option>
+                </select>
+            </div>
+        </div>
+        <button class="btn" onclick="salvarPreferencia()">Confirmar e avançar →</button>
+    </div>
+    <div id="pref-salva" style="display:none">
+        <div class="pref-badge">
+            <span id="pref-texto"></span>
+            <button onclick="editarPreferencia()">Editar</button>
+        </div>
+        <div class="btn-row">
+            <button class="btn" onclick="irParaCamera()">Reconhecer prateleira →</button>
+        </div>
+    </div>
+</div>
+
+<!-- CARD 2 -->
+<div class="card" id="card-2">
+    <h2><span class="num">2</span> Reconhecimento da Prateleira</h2>
+    <div id="webcam-wrap"></div>
+    <div id="status-cam">⏳ Carregando modelo de IA...</div>
+
+    <!-- DEBUG SEMPRE ABERTO -->
+    <div id="debug-wrap">
+        <div id="debug-title">🔍 Classes detectadas em tempo real</div>
+        <ul id="debug-list"></ul>
+    </div>
+
+    <div class="btn-row">
+        <button class="btn btn-outline" onclick="voltarPreferencia()">← Voltar</button>
+    </div>
+</div>
+
+<div id="resultado"></div>
+
+<script>
+const MODEL_URL = "https://teachablemachine.withgoogle.com/models/DwEyaQ0f_/";
+const THRESHOLD = 0.50; // 50% — mais sensível
+
+let model, webcam;
+
+/*
+  ─────────────────────────────────────────────────────────────
+  MAPEAMENTO POR ÍNDICE
+  Ajuste os números abaixo conforme o que aparece no debug:
+    - Veja qual índice ([0], [1], [2]...) acende verde quando
+      você aponta o Samsung → coloque esse índice em "samsung"
+    - Repita para o iPhone e para "outro"
+  ─────────────────────────────────────────────────────────────
+*/
+const MAPA = {
+    0: "samsung",   // ← índice do Samsung no seu modelo
+    1: "iphone",    // ← índice do iPhone no seu modelo
+    2: "outro",     // ← índice de "outro" no seu modelo
+    3: "back ground"      // ← índice de "back ground" no seu modelo
+};
+
+// Produto por categoria + exclusividade
+function resolverProduto(cat, excl) {
+    if (cat === "iphone")  return excl === "sim" ? "MagSafe Powerbank" : "Fone sem fio JBL";
+    if (cat === "samsung") return excl === "sim" ? "Galaxy Buds"       : "Powerbank 12go";
+    if (cat === "outro")   return null;      // → sem produto
+    if (cat === "back ground") return null;   // → sem produto
+    return undefined;                        // → ocultar
+}
+
+// ── Preferência ──────────────────────────────────────────────
+function getPref() { return JSON.parse(localStorage.getItem("luzguia_pref") || "null"); }
+
+function salvarPreferencia() {
+    localStorage.setItem("luzguia_pref", JSON.stringify({
+        marca:     document.getElementById("marca").value,
+        exclusivo: document.getElementById("exclusivo").value
+    }));
+    mostrarPrefSalva();
+}
+function mostrarPrefSalva() {
+    const p = getPref(); if (!p) return;
+    document.getElementById("pref-texto").textContent =
+        ${p.marca === "apple" ? "Apple" : "Samsung"} · ${p.exclusivo === "sim" ? "Exclusivo" : "Não exclusivo"};
+    document.getElementById("pref-form").style.display  = "none";
+    document.getElementById("pref-salva").style.display = "block";
+}
+function editarPreferencia() {
+    const p = getPref();
+    if (p) { document.getElementById("marca").value = p.marca; document.getElementById("exclusivo").value = p.exclusivo; }
+    document.getElementById("pref-form").style.display  = "block";
+    document.getElementById("pref-salva").style.display = "none";
+}
+
+// ── Navegação ─────────────────────────────────────────────────
+function irParaCamera() {
+    document.getElementById("card-1").classList.remove("visible");
+    document.getElementById("card-2").classList.add("visible");
+    document.getElementById("si-1").classList.replace("active","done");
+    document.getElementById("si-2").classList.add("active");
+    if (!model) initCamera();
+}
+function voltarPreferencia() {
+    document.getElementById("card-2").classList.remove("visible");
+    document.getElementById("card-1").classList.add("visible");
+    document.getElementById("si-2").classList.remove("active");
+    document.getElementById("si-1").classList.remove("done");
+    document.getElementById("si-1").classList.add("active");
+    esconderResultado();
+}
+
+// ── Modelo + Câmera ───────────────────────────────────────────
+async function initCamera() {
+    setStatus("⏳ Carregando modelo...");
+    try {
+        model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
+        // Loga nomes reais no console para conferência
+        console.table(model.getClassLabels().map((n,i) => ({ índice: i, nome: n, mapeado: MAPA[i] || "—" })));
+    } catch(e) { setStatus("❌ Erro no modelo: " + e.message); return; }
+
+    setStatus("📷 Iniciando câmera...");
+    try {
+        webcam = new tmImage.Webcam(560, 360, true);
+        await webcam.setup();
+        await webcam.play();
+        document.getElementById("webcam-wrap").appendChild(webcam.canvas);
+        setStatus("✅ Aponte para a prateleira.");
+    } catch(e) { setStatus("❌ Câmera indisponível: " + e.message); return; }
+
+    loop();
+}
+
+async function loop() { webcam.update(); await predict(); requestAnimationFrame(loop); }
+
+async function predict() {
+    const preds = await model.predict(webcam.canvas);
+    renderDebug(preds);
+
+    // índice de maior probabilidade
+    let topIdx = 0;
+    for (let i = 1; i < preds.length; i++)
+        if (preds[i].probability > preds[topIdx].probability) topIdx = i;
+
+    const prob = preds[topIdx].probability;
+    const cat  = MAPA[topIdx];
+
+    if (prob < THRESHOLD || cat === undefined) { esconderResultado(); return; }
+
+    const pref    = getPref() || { exclusivo: "nao" };
+    const produto = resolverProduto(cat, pref.exclusivo);
+    exibirResultado(produto);
+}
+
+function exibirResultado(produto) {
+    const el = document.getElementById("resultado");
+    el.style.display = "block";
+
+    if (produto === undefined) { esconderResultado(); return; }
+
+    if (produto === null) {
+        el.innerHTML = `<div class="resultado-box sem-produto">
+            <div class="label-top">Resultado</div>
+            <div class="produto">Não existem produtos relacionados</div>
+        </div>`;
+    } else {
+        el.innerHTML = `<div class="resultado-box">
+            <div class="label-top">Produto relacionado</div>
+            <div class="produto">${produto}</div>
+        </div>`;
+    }
+}
+function esconderResultado() {
+    const el = document.getElementById("resultado");
+    el.style.display = "none"; el.innerHTML = "";
+}
+
+// ── Debug sempre visível ──────────────────────────────────────
+function renderDebug(predictions) {
+    const lista = document.getElementById("debug-list");
+    lista.innerHTML = "";
+    const maxP = Math.max(...predictions.map(p => p.probability));
+
+    predictions
+        .map((p, i) => ({ ...p, idx: i }))
+        .sort((a, b) => b.probability - a.probability)
+        .forEach(p => {
+            const pct  = (p.probability * 100).toFixed(1);
+            const cat  = MAPA[p.idx] || "não mapeado";
+            const isTop = p.probability === maxP;
+            const li = document.createElement("li");
+            if (isTop) li.classList.add("top");
+            li.innerHTML = `
+                <span class="lbl">[${p.idx}] ${p.className} → <em>${cat}</em></span>
+                <div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div>
+                <span class="pct">${pct}%</span>`;
+            lista.appendChild(li);
+        });
+}
+
+function setStatus(msg) { document.getElementById("status-cam").textContent = msg; }
+
+// ── Boot ──────────────────────────────────────────────────────
+(function() {
+    const p = getPref();
+    if (p) {
+        document.getElementById("marca").value     = p.marca;
+        document.getElementById("exclusivo").value = p.exclusivo;
+        mostrarPrefSalva();
+    }
+    function exibirResultado(produto) {
+  const el = document.getElementById("resultado");
+  el.style.display = "block";
+
+  const temProduto = (produto !== null && produto !== undefined);
+
+  if (!temProduto) {
+    el.innerHTML = `<div class="resultado-box sem-produto">
+      <div class="label-top">Resultado</div>
+      <div class="produto">Não existem produtos relacionados</div>
+    </div>`;
+    if (typeof window.atualizarLuzGuia === 'function') 
+      window.atualizarLuzGuia(false);
+    return;
+  }
+
+  el.innerHTML = `<div class="resultado-box">
+    <div class="label-top">Produto relacionado</div>
+    <div class="produto">${produto}</div>
+  </div>`;
+
+  // ← CHAMADA PARA O ESP32
+  if (typeof window.atualizarLuzGuia === 'function') 
+    window.atualizarLuzGuia(true, produto);
+}
+function esconderResultado() {
+  const el = document.getElementById("resultado");
+  el.style.display = "none";
+  if (typeof window.atualizarLuzGuia === 'function') 
+    window.atualizarLuzGuia(false);
+}
+})();
+</script>
+</body>
+</html>
